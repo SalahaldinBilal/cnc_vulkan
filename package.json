@@ -1,0 +1,11 @@
+{
+  "name": "cnc-vulkan",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "version:bump": "node scripts/bump-version.ts"
+  }
+}

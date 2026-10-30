@@ -1,0 +1,16 @@
+# Most settings are in the game's options menu (Options, then "More" next to the resolution) and
+# saved in Options.ini, which wins over this file once a setting has been saved there.
+# The resolution is the options menu's own. Until one is picked, the monitor's is used.
+
+[engine]
+# Render faster than 30 fps. The game itself still updates 30 times per second, as it always did.
+split_logic = true
+
+[debug]
+# Check every Vulkan call with the Khronos validation layer and write what it finds to the log.
+# Slow, for finding bugs only. Needs the Vulkan SDK with its 32-bit components.
+validation = false
+# Every 5 seconds, write which parts of the game and of this mod took the most time to the log.
+profile = false
+# Every 5 seconds, write how long each of the game's render systems (models, particles, shadows, UI and so on) took per frame.
+timers = false

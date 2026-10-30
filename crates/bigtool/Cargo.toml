@@ -1,0 +1,7 @@
+[package]
+name = "bigtool"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["tga", "png"] }

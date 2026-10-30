@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  check:
+    name: Check version
+    if: github.actor == 'SalahaldinBilal'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the mod version
+        id: version
+        run: |
+          $toml = Get-Content Cargo.toml -Raw
+          $version = [regex]::Match($toml, '(?m)^\[workspace\.package\]\r?\nversion = "([^"]+)"').Groups[1].Value
+          if (-not $version) {
+            Write-Output "::error::No version under [workspace.package] in Cargo.toml."
+            exit 1
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and "v$version" -ne $env:GITHUB_REF_NAME) {
+            Write-Output "::error::Tag $env:GITHUB_REF_NAME doesn't match version $version in Cargo.toml."
+            exit 1
+          }
+          if (-not (Select-String -Path CHANGELOG.md -SimpleMatch "## [$version]" -Quiet)) {
+            Write-Output "::error::No '## [$version]' section in CHANGELOG.md. Run npm run version:bump $version before tagging."
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+  build:
+    name: Build
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          $out = 'target/i686-pc-windows-msvc/release'
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item "$out/dinput8.dll", "$out/dinput8.pdb", dist/cnc-vulkan.toml package
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mod
+          path: package
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    needs: [check, build]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: mod
+          path: package
+
+      - name: Read release notes
+        run: |
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $match = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          if (-not $match.Success) { Write-Output "::error::No '## [$env:VERSION]' section in CHANGELOG.md"; exit 1 }
+          Set-Content release-notes.md $match.Groups[1].Value.Trim()
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $zip = "cnc-vulkan-$env:VERSION.zip"
+          $pdb = "cnc-vulkan-$env:VERSION-pdb.zip"
+          Compress-Archive -Path package/dinput8.dll, package/cnc-vulkan.toml -DestinationPath $zip
+          Compress-Archive -Path package/dinput8.pdb -DestinationPath $pdb
+          gh release create "v$env:VERSION" $zip $pdb --title "v$env:VERSION" --notes-file release-notes.md
